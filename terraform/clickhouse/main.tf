@@ -30,14 +30,14 @@ module "gen_secret" {
   source  = "terraform-google-modules/gcloud/google"
   version = "~> 2.0"
 
-  platform = "linux"
+  platform              = "linux"
   additional_components = ["kubectl", "beta"]
 
-  create_cmd_entrypoint  = "/bin/sh"
-  create_cmd_body        = join(" ", [ "-c",<<-EOT
-  dd if=/dev/urandom count=1|shasum|cut -c 1-12|gcloud --project ${var.project_id} secrets versions add ${google_secret_manager_secret.cluster_password.secret_id} --data-file=-
+  create_cmd_entrypoint = "/bin/sh"
+  create_cmd_body = join(" ", ["-c", <<-EOT
+  "dd if=/dev/urandom count=1|shasum|cut -c 1-12|gcloud --project ${var.project_id} secrets versions add ${google_secret_manager_secret.cluster_password.secret_id} --data-file=-"
   EOT
-  ]
+    ]
   )
 }
 
@@ -73,7 +73,7 @@ resource "google_compute_instance" "clickhouse" {
       size  = 200
     }
   }
-
+  tags = ["clickhouse-cluster"]
   attached_disk {
     source      = google_compute_disk.clickhouse[count.index].self_link
     device_name = "disk-1"
@@ -89,9 +89,9 @@ resource "google_compute_instance" "clickhouse" {
     subnetwork = var.cluster_subnetwork
   }
   metadata = {
-    clickhouse-startup-script = file("../scripts/clickhouse-start-up-script.sh")
-    clickhouse-config-cluster = file("../scripts/clickhouse-config-cluster.py")
-    clickhouse-createtable    = file("../scripts/createtable.py")
+    clickhouse-startup-script = file("${path.module}/scripts/clickhouse-start-up-script.sh")
+    clickhouse-config-cluster = file("${path.module}/scripts/clickhouse-config-cluster.py")
+    clickhouse-createtable    = file("${path.module}/scripts/createtable.py")
     clickhouse-cluster-size   = "${var.cluster_size}"
   }
   metadata_startup_script = <<-EOT
@@ -132,7 +132,7 @@ resource "google_compute_instance" "zookeeper" {
     subnetwork = var.cluster_subnetwork
   }
   metadata = {
-    zookeeper-startup-script = file("../scripts/zk-install.sh")
+    zookeeper-startup-script = file("${path.module}/scripts/zk-install.sh")
     zookeeper-index          = "${count.index}"
   }
   metadata_startup_script = <<-EOT
@@ -194,39 +194,3 @@ module "ilb" {
   }
 }
 
-resource "google_compute_instance" "grafana" {
-  name         = "clickhouse-grafana"
-  machine_type = "e2-standard-4"
-  zone         = var.zone
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-      size  = 200
-    }
-  }
-
-  service_account {
-    # Google recommends custom service accounts that have cloud-platform scope and permissions granted via IAM Roles.
-    email  = google_service_account.default.email
-    scopes = ["cloud-platform"]
-  }
-  network_interface {
-    network    = var.cluster_network
-    subnetwork = var.cluster_subnetwork
-  }
-  metadata = {
-    grafana-startup-script = file("../scripts/grafana-install.sh")
-    grafana-clickhouse-ilb = "${module.ilb.ip_address}"
-  }
-  metadata_startup_script = <<-EOT
-  #!/bin/bash
-  if [ -e /root/grafana-install.sh ]
-  then
-    exit 0
-  fi
-  curl -o /root/grafana-install.sh "http://metadata.google.internal/computeMetadata/v1/instance/attributes/grafana-startup-script" -H "Metadata-Flavor: Google"
-  curl -o /root/ilb-address.txt "http://metadata.google.internal/computeMetadata/v1/instance/attributes/grafana-clickhouse-ilb" -H "Metadata-Flavor: Google"
-  bash /root/grafana-install.sh /root/ilb-address.txt
-  EOT
-
-}

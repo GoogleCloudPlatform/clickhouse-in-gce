@@ -1,0 +1,105 @@
+---
+admin:
+  address:
+    socket_address: { address: 127.0.0.1, port_value: 9901 }
+
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 8080 }
+    filter_chains:
+    - name: chain_0
+      filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          codec_type: AUTO
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match: { prefix: "/" }
+                route: { cluster: some_service }
+                name: default
+                metadata:
+                  filter_metadata:
+                    envoy.filters.http.lua:
+                      # roles:
+                      #   Viewer: 1
+                      #   Editor: 2
+                      #   Admin: 3
+                      # accesslevel-mapping:
+                      #   test: Admin
+                      #   viewer: Viewer
+                      #   editor: Editor
+                      # accesslevel-policy: 1048994942244
+                      # rolebindings:
+                      #   jscheng@google.com: Admin
+          http_filters:
+          - name: envoy.filters.http.jwt_authn
+            typed_config: 
+              "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+              providers:
+                auth0:
+                  issuer: https://cloud.google.com/iap
+                  audiences:
+                  - /projects/121500961265/global/backendServices/4179435346081693889
+                  from_headers:
+                  - name: x-goog-iap-jwt-assertion
+                  payload_in_metadata: jwt_payload
+                  remote_jwks:
+                    http_uri:
+                      uri: https://www.gstatic.com/iap/verify/public_key-jwk
+                      cluster: www.gstatic.com|443
+                      timeout: 1s
+                    cache_duration:
+                      seconds: 3000
+              rules:
+              - match: {prefix: /healthz}                
+              - match: {prefix: /}
+                requires: {provider_name: auth0}
+          - name: envoy.filters.http.lua
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+              inline_code: |
+                rolesetting = require "rolesetting"
+                envoy_on_request = rolesetting.envoy_on_request
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: some_service
+    connect_timeout: 0.25s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: some_service
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 127.0.0.1
+                port_value: 3000
+  - name: www.gstatic.com|443
+    connect_timeout: 1s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    dns_lookup_family: V4_ONLY
+    load_assignment:
+      cluster_name: www.gstatic.com|443
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: www.gstatic.com
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
