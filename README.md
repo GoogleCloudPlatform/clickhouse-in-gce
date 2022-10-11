@@ -7,14 +7,18 @@ files to deploy a clickhouse cluster using Compute Engine virtual machines.
 
 ## What is deployed
 
+```shell-script
+cd terraform/clickhouse
+terraform apply
+```
+
 By running the commands above, these resources will be deployed in
 your Google Cloud project:
 
-1. Three-node zookeeper cluster
-1. Clickhouse cluster, default is 4 nodes
-1. Unmanaged instance group containing the clickhouse nodes
-1. Internal load-balancer pointing to the clickhouse cluster
-1. A vm running Grafana with clickhouse data-source configured
+1. A three-node zookeeper cluster
+1. A clickhouse cluster, default is 4 nodes
+1. An Unmanaged instance group containing the clickhouse nodes
+1. An Internal load-balancer pointing to the clickhouse cluster
 
 
 ## Quick start
